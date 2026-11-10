@@ -1,7 +1,6 @@
 'use strict';
 
 /* ================= 基础配置 ================= */
-const STORE_KEY = 'launch-check-assistant-v1';
 const STATUSES = ['待处理', '进行中', '通过', '不通过', '不适用'];
 const PRIORITIES = ['高', '中', '低'];
 const ST_CLASS = {'待处理': 's-todo', '进行中': 's-doing', '通过': 's-pass', '不通过': 's-fail', '不适用': 's-na'};
@@ -152,11 +151,6 @@ function mk(cat, title, o) {
   }, o || {});
 }
 
-function seedItems() {
-  // Only fictional check prompts; never pre-confirm a project rule or test result.
-  return window.SHIPREPAIR_TEMPLATES[0].items.map(spec => mk(spec.category, spec.title,
-    Object.assign({}, spec, {example: true, note: '演示模板：' + spec.note})));
-}
 /* ================= 状态与存储 ================= */
 const state = {
   items: [],
@@ -164,24 +158,159 @@ const state = {
   filter: {cat: 'all', owner: 'all', status: 'all', sort: 'default', q: '', onlyOpen: false, onlyOverdue: false}
 };
 let editingId = null;
+const projectManager = ProjectStore.createManager({
+  getItem(key) { return window.localStorage.getItem(key); },
+  setItem(key, value) { window.localStorage.setItem(key, value); }
+});
+let activeProjectId = null;
+let activeProjectMeta = null;
+let projectDirty = false;
+let projectNotice = '';
+let projectSession = 0;
+let pendingImportReader = null;
 
 function save() {
+  if (!activeProjectId) return false;
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify({v: 2, updatedAt: Date.now(), items: state.items, context: state.context}));
+    const saved = projectManager.save(activeProjectId, {items: state.items, context: state.context});
+    activeProjectMeta = {id: saved.id, name: saved.name, createdAt: saved.createdAt, updatedAt: saved.updatedAt};
+    projectDirty = false;
     document.getElementById('savedTip').textContent = '已自动保存 ' + nowText();
+    return true;
   } catch (e) {
-    toast('保存失败：浏览器本地存储不可用');
+    projectDirty = true;
+    document.getElementById('savedTip').textContent = '保存未成功，请先备份当前记录';
+    toast('项目保存失败：' + e.message);
+    return false;
   }
 }
 function load() {
   try {
-    const data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (data && Array.isArray(data.items)) {
-      restoreContext(data.context);
-      return data.items;
-    }
-  } catch (e) { /* 数据损坏时退回示例 */ }
-  return null;
+    const result = projectManager.migrateLegacy();
+    if (result.migrated) projectNotice = '之前的台账已保留在“' + result.project.name + '”中，请选择项目打开。';
+  } catch (e) { projectNotice = '项目记录读取失败：' + e.message + '。原记录未被覆盖。'; }
+}
+
+function projectFileName(name) {
+  return String(name || '未命名项目').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 80);
+}
+function resetWorkspaceSession() {
+  projectSession++;
+  if (pendingImportReader && pendingImportReader.readyState === 1 && typeof pendingImportReader.abort === 'function') pendingImportReader.abort();
+  pendingImportReader = null;
+  document.getElementById('fileInput').value = '';
+  clearTimeout(autoTimer);
+  autoTimer = null;
+  autoResult = null;
+  autoMapCache.src = null; autoMapCache.sys = null;
+  editingId = null;
+  hideToast();
+  ['overlay', 'autoOverlay', 'projectOverlay'].forEach(id => { document.getElementById(id).hidden = true; });
+  document.body.style.overflow = '';
+  state.items = [];
+  restoreContext(null);
+  state.filter = {cat: 'all', owner: 'all', status: 'all', sort: 'default', q: '', onlyOpen: false, onlyOverdue: false};
+  ['fQ', 'autoSrc', 'autoSys'].forEach(id => { document.getElementById(id).value = ''; });
+  ['fOpen', 'fDue'].forEach(id => { document.getElementById(id).checked = false; });
+  document.getElementById('autoHeader').checked = true;
+  document.getElementById('autoPrecision').value = '2';
+  document.getElementById('autoTarget').innerHTML = '';
+  document.getElementById('autoMap').innerHTML = '';
+  document.getElementById('modalBody').innerHTML = '';
+  document.getElementById('formErr').textContent = '';
+  invalidateAuto();
+  renderContext();
+  renderAll();
+}
+function renderProjects() {
+  const message = document.getElementById('projectStorageMessage');
+  message.hidden = !projectNotice;
+  message.textContent = projectNotice;
+  try {
+    const q = document.getElementById('projectSearch').value.trim().toLowerCase();
+    const all = projectManager.list().sort((a, b) => b.updatedAt - a.updatedAt);
+    const projects = all.filter(p => [p.name, p.context.project, p.context.version].join(' ').toLowerCase().includes(q));
+    document.getElementById('projectList').innerHTML = projects.length ? projects.map(p => {
+      const s = Readiness.evaluate(p.items);
+      return '<article class="project-folder"><span class="folder-icon" aria-hidden="true">📁</span><div class="folder-body">' +
+        '<h3 class="project-name">' + esc(p.name) + '</h3><div class="project-summary">' +
+        esc([p.context.project || '工程编号未填写', p.context.version || '版本未填写'].join(' · ')) + '</div>' +
+        '<div class="project-summary">' + s.total + ' 项检查 · 有效通过 ' + s.pass + ' · 阻断 ' + s.blockers.length + '</div>' +
+        '<div class="project-dates">最近更新：' + esc(new Date(p.updatedAt).toLocaleString('zh-CN', {hour12: false})) + '</div>' +
+        '</div><div class="folder-actions"><button class="btn primary" data-act="openProject" data-project-id="' + esc(p.id) + '">打开项目</button></div></article>';
+    }).join('') : '<div class="empty">' + (all.length ? '没有匹配的项目，试试其他名称或工程编号。' : '还没有项目文件夹。点击“新建项目”，为本次上线建立独立台账。') + '</div>';
+  } catch (e) {
+    message.hidden = false;
+    message.textContent = '无法读取项目记录：' + e.message + '。原记录未被覆盖。';
+    document.getElementById('projectList').innerHTML = '<div class="empty">请先恢复有效的项目记录，再继续操作。</div>';
+  }
+}
+function showProjectHome() {
+  if (projectDirty && !save()) return false;
+  resetWorkspaceSession();
+  activeProjectId = null;
+  activeProjectMeta = null;
+  document.getElementById('workspaceView').hidden = true;
+  document.getElementById('workspaceActions').hidden = true;
+  document.getElementById('workspaceHeading').hidden = true;
+  document.getElementById('projectHomeView').hidden = false;
+  document.getElementById('activeProjectName').textContent = '';
+  document.getElementById('savedTip').textContent = '';
+  renderProjects();
+  return true;
+}
+function openProject(id) {
+  if (projectDirty && !save()) return false;
+  const project = projectManager.get(id);
+  if (!project) throw new Error('未找到项目，请重新选择');
+  resetWorkspaceSession();
+  activeProjectId = project.id;
+  activeProjectMeta = {id: project.id, name: project.name, createdAt: project.createdAt, updatedAt: project.updatedAt};
+  state.items = project.items.map(normalizeItem);
+  restoreContext(project.context);
+  document.getElementById('activeProjectName').textContent = project.name;
+  document.getElementById('projectHomeView').hidden = true;
+  document.getElementById('workspaceView').hidden = false;
+  document.getElementById('workspaceActions').hidden = false;
+  document.getElementById('workspaceHeading').hidden = false;
+  document.getElementById('savedTip').textContent = '本项目记录已载入';
+  renderContext(); renderAll();
+  return true;
+}
+function openProjectDialog() {
+  document.getElementById('newProjectName').value = '';
+  document.getElementById('newProjectCode').value = '';
+  document.getElementById('newProjectVersion').value = '';
+  document.getElementById('newProjectTemplate').value = 'blank';
+  document.getElementById('projectFormErr').textContent = '';
+  document.getElementById('projectOverlay').hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+function closeProjectDialog() {
+  document.getElementById('projectOverlay').hidden = true;
+  document.body.style.overflow = '';
+}
+function createProjectFromForm() {
+  const err = document.getElementById('projectFormErr');
+  try {
+    if (projectDirty && !save()) throw new Error('当前项目尚未保存成功，请先备份当前记录');
+    const templateId = document.getElementById('newProjectTemplate').value;
+    const template = window.SHIPREPAIR_TEMPLATES.find(t => t.id === templateId);
+    if (templateId !== 'blank' && !template) throw new Error('请选择有效模板');
+    const project = projectManager.create({name: document.getElementById('newProjectName').value,
+      context: {project: document.getElementById('newProjectCode').value.trim(), version: document.getElementById('newProjectVersion').value.trim()},
+      items: template ? template.items.map(i => mk(i.category, i.title, i)) : []});
+    closeProjectDialog(); openProject(project.id);
+    toast('已新建项目：' + project.name);
+    return project;
+  } catch (e) { err.textContent = e.message; return null; }
+}
+function importProjectData(data) {
+  if (projectDirty && !save()) throw new Error('当前项目尚未保存成功，请先保留当前记录');
+  const project = projectManager.importProject(data);
+  openProject(project.id);
+  toast('已导入为新项目：' + project.name);
+  return project;
 }
 
 /* ================= 判定逻辑 ================= */
@@ -202,16 +331,18 @@ function renderContext() {
   document.querySelectorAll('[data-context]').forEach(el => { el.value = state.context[el.dataset.context] || ''; });
 }
 function contextText() {
-  return ['项目 / 工程：' + (state.context.project || '未填写'), '拟上线版本：' + (state.context.version || '未填写'),
+  return ['项目文件夹：' + (activeProjectMeta ? activeProjectMeta.name : '未选择'), '项目 / 工程：' + (state.context.project || '未填写'), '拟上线版本：' + (state.context.version || '未填写'),
     '取数截止：' + (state.context.cutoff || '未填写'), '核查范围：' + (state.context.scope || '未填写')].join('；');
 }
 function addTemplate() {
+  if (!activeProjectId) return;
   const t = window.SHIPREPAIR_TEMPLATES.find(t => t.id === document.getElementById('templateSelect').value);
   if (!t) return;
   const keys = new Set(state.items.map(i => i.templateKey).filter(Boolean));
   const added = t.items.filter(i => !keys.has(i.templateKey)).map(i => mk(i.category, i.title, i));
   state.items.push(...added);
-  save(); renderAll();
+  if (!save()) { renderAll(); return; }
+  renderAll();
   toast(added.length ? '已添加 ' + added.length + ' 项待核对内容：' + t.name : '该模板检查项已存在');
 }
 function verdictInfo(s) {
@@ -571,17 +702,25 @@ function submitForm() {
     const item = mk(v.category, v.title, {});
     Object.assign(item, patch);
     state.items.push(item);
+    editingId = item.id;
   }
-  save();
+  if (!save()) { renderAll(); return; }
   closeModal();
   renderAll();
   toast('已保存');
 }
 
 /* ================= 备份 / 导入 / 报告 ================= */
+function projectBackupData() {
+  if (!activeProjectId || !activeProjectMeta) throw new Error('请先选择项目');
+  const project = Object.assign({}, activeProjectMeta, {items: state.items, context: state.context});
+  return {app: 'launch-check-assistant', version: 3, exportedAt: new Date().toISOString(), project,
+    items: state.items, context: state.context};
+}
 function backupJson() {
-  download('上线检查备份_' + stamp() + '.json',
-    JSON.stringify({app: 'launch-check-assistant', version: 2, exportedAt: new Date().toISOString(), items: state.items, context: state.context}, null, 2),
+  const data = projectBackupData();
+  download(projectFileName(data.project.name) + '_上线检查备份_' + stamp() + '.json',
+    JSON.stringify(data, null, 2),
     'application/json');
   toast('备份文件已导出');
 }
@@ -601,6 +740,7 @@ function normalizeItem(x) {
 const RPT_ST = {'待处理': 'r-todo', '进行中': 'r-doing', '通过': 'r-pass', '不通过': 'r-fail', '不适用': 'r-na'};
 
 function buildReport() {
+  if (!activeProjectId) throw new Error('请先选择项目');
   const s = stats();
   const d = new Date();
   const dateStr = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
@@ -678,7 +818,7 @@ function buildReport() {
 }
 
 function exportReport() {
-  download('上线检查报告_' + stamp() + '.html', buildReport(), 'text/html;charset=utf-8');
+  download(projectFileName(activeProjectMeta.name) + '_上线检查报告_' + stamp() + '.html', buildReport(), 'text/html;charset=utf-8');
   toast('报告已导出，可用浏览器打开或打印为 PDF');
 }
 
@@ -744,7 +884,7 @@ function refreshAutoMap() {
   } catch (e) { invalidateAuto(); document.getElementById('autoErr').textContent = e.message; }
 }
 function autoFingerprint() {
-  return JSON.stringify([document.getElementById('autoSrc').value, document.getElementById('autoSys').value,
+  return JSON.stringify([activeProjectId, document.getElementById('autoSrc').value, document.getElementById('autoSys').value,
     document.getElementById('autoHeader').checked, autoPrecision(), readAutoMap('src'), readAutoMap('sys')]);
 }
 function anomTable(title, rows, cols, vals) {
@@ -831,13 +971,18 @@ function renderAutoTarget() {
     dataItems.map(i => '<option value="' + esc(i.id) + '">更新：' + esc(i.title) + '</option>').join('');
 }
 function writeAutoResult() {
+  if (!activeProjectId) return;
   const err = document.getElementById('autoErr');
   if (!autoResult || autoResult.fingerprint !== autoFingerprint()) { invalidateAuto(); err.textContent = '数据或列对应已变化，请重新核对后写入'; return; }
   const target = document.getElementById('autoTarget').value, isNew = target === 'new';
   const {src: a, sys: b} = autoResult, one = b.rows ? b : a;
   const it = isNew ? mk('data', '修船明细核对 ' + stamp(), {critical: true, priority: '高'}) : state.items.find(i => i.id === target);
   if (!it) { err.textContent = '未找到目标检查项'; return; }
-  if (isNew) state.items.push(it);
+  if (isNew) {
+    state.items.push(it);
+    renderAutoTarget();
+    document.getElementById('autoTarget').value = it.id;
+  }
   it.detailCount = a.rows ? String(a.rows) : '';
   it.summaryCount = b.rows ? String(b.rows) : '';
   it.posSum = String(roundValue(one.posSum)); it.negSum = String(roundValue(one.negSum)); it.zeroCount = String(one.zero);
@@ -856,11 +1001,13 @@ function writeAutoResult() {
   });
   it.reconciliation = {issues: autoResult.issues, both: !!autoResult.cmp, precision: autoResult.precision, at: autoResult.at.toISOString(), ranges};
   it.status = '进行中'; it.updatedAt = Date.now();
-  save(); closeAuto(); renderAll();
+  if (!save()) { renderAll(); return; }
+  closeAuto(); renderAll();
   toast(isNew ? '已创建核对记录，待人工确认' : '已更新统计并改为进行中，待人工确认');
 }
 
 function openAuto() {
+  if (!activeProjectId) return;
   invalidateAuto();
   renderAutoTarget();
   refreshAutoMap();
@@ -883,6 +1030,18 @@ function bindEvents() {
     const itemEl = e.target.closest('.item');
     const id = itemEl ? itemEl.dataset.id : null;
 
+    if (act === 'projectHome') { showProjectHome(); return; }
+    if (act === 'newProject') { openProjectDialog(); return; }
+    if (act === 'closeProjectDialog') { closeProjectDialog(); return; }
+    if (act === 'createProject') { createProjectFromForm(); return; }
+    if (act === 'importProject' || act === 'import') { document.getElementById('fileInput').click(); return; }
+    if (act === 'openProject') {
+      try { openProject(el.dataset.projectId); }
+      catch (error) { projectNotice = error.message; renderProjects(); }
+      return;
+    }
+    if (!activeProjectId) return;
+
     if (act === 'addTemplate') { addTemplate(); }
     else if (act === 'add') { e.preventDefault(); openModal(null, el.dataset.cat); }
     else if (act === 'edit') { if (id) openModal(id); }
@@ -894,7 +1053,8 @@ function bindEvents() {
       const prev = {status: it.status, updatedAt: it.updatedAt};
       it.status = '通过';
       it.updatedAt = Date.now();
-      save(); renderAll();
+      if (!save()) { renderAll(); return; }
+      renderAll();
       toast('已标记通过：' + it.title, {
         label: '撤销',
         fn: () => { Object.assign(it, prev); save(); renderAll(); }
@@ -906,12 +1066,14 @@ function bindEvents() {
       const it = state.items[idx];
       if (confirm('确定删除「' + it.title + '」？删除后 6 秒内可撤销。')) {
         state.items.splice(idx, 1);
-        save(); renderAll();
+        if (!save()) { renderAll(); return; }
+        renderAll();
         toast('已删除「' + it.title + '」', {
           label: '撤销',
           fn: () => {
             state.items.splice(Math.min(idx, state.items.length), 0, it);
-            save(); renderAll();
+            if (!save()) { renderAll(); return; }
+            renderAll();
             toast('已恢复');
           }
         });
@@ -920,13 +1082,13 @@ function bindEvents() {
     else if (act === 'close') { closeModal(); }
     else if (act === 'save') { submitForm(); }
     else if (act === 'backup') { backupJson(); }
-    else if (act === 'import') { document.getElementById('fileInput').click(); }
     else if (act === 'report') { exportReport(); }
     else if (act === 'clearExample') {
       const n = state.items.filter(i => i.example).length;
       if (confirm('将删除 ' + n + ' 条示例数据，是否继续？')) {
         state.items = state.items.filter(i => !i.example);
-        save(); renderAll(); toast('示例数据已清除');
+        if (!save()) { renderAll(); return; }
+        renderAll(); toast('示例数据已清除');
       }
     }
     else if (act === 'auto') { openAuto(); }
@@ -963,7 +1125,8 @@ function bindEvents() {
       }
       it.status = stSel.value;
       it.updatedAt = Date.now();
-      save(); renderAll();
+      if (!save()) { renderAll(); return; }
+      renderAll();
       return;
     }
 
@@ -986,6 +1149,7 @@ function bindEvents() {
     renderList();
   });
   document.querySelectorAll('[data-context]').forEach(el => el.addEventListener('input', () => {
+    if (!activeProjectId) return;
     state.context[el.dataset.context] = el.value.trim();
     save(); renderVerdict();
   }));
@@ -1004,11 +1168,16 @@ function bindEvents() {
   document.getElementById('autoOverlay').addEventListener('click', e => {
     if (e.target.id === 'autoOverlay') closeAuto();
   });
+  document.getElementById('projectOverlay').addEventListener('click', e => {
+    if (e.target.id === 'projectOverlay') closeProjectDialog();
+  });
+  document.getElementById('projectSearch').addEventListener('input', renderProjects);
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!document.getElementById('overlay').hidden) closeModal();
     else if (!document.getElementById('autoOverlay').hidden) closeAuto();
+    else if (!document.getElementById('projectOverlay').hidden) closeProjectDialog();
   });
 
   const scheduleAuto = () => {
@@ -1028,20 +1197,25 @@ function bindEvents() {
   document.getElementById('fileInput').addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    if (pendingImportReader && pendingImportReader.readyState === 1 && typeof pendingImportReader.abort === 'function') pendingImportReader.abort();
     const reader = new FileReader();
+    pendingImportReader = reader;
+    const session = projectSession;
+    reader.onerror = () => {
+      if (pendingImportReader !== reader || session !== projectSession) return;
+      pendingImportReader = null;
+      e.target.value = '';
+      toast('读取备份文件失败，请重新选择');
+    };
     reader.onload = () => {
+      if (pendingImportReader !== reader || session !== projectSession) return;
+      pendingImportReader = null;
       try {
         const data = JSON.parse(reader.result);
-        const items = Array.isArray(data) ? data : (data && data.items);
-        if (!Array.isArray(items)) throw new Error('文件格式不正确，应包含 items 数组');
-        if (!confirm('将导入 ' + items.length + ' 条检查项，并覆盖当前数据。建议先导出备份，是否继续？')) return;
-        state.items = items.map(normalizeItem);
-        restoreContext(data.context);
-        renderContext();
-        save(); renderAll();
-        toast('导入成功，共 ' + state.items.length + ' 项');
+        importProjectData(data);
       } catch (err) {
-        alert('导入失败：' + err.message);
+        projectNotice = '导入失败：' + err.message;
+        renderProjects(); toast(projectNotice);
       } finally {
         e.target.value = '';
       }
@@ -1052,16 +1226,8 @@ function bindEvents() {
 
 /* ================= 启动 ================= */
 (function init() {
-  const stored = load();
-  if (stored !== null) {
-    state.items = stored.map(normalizeItem);
-    document.getElementById('savedTip').textContent = '本地数据已载入';
-  } else {
-    state.items = seedItems();
-    save();
-  }
+  load();
   bindEvents();
-  renderContext();
   document.getElementById('templateSelect').innerHTML = window.SHIPREPAIR_TEMPLATES.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name) + '（' + t.items.length + ' 项）</option>').join('');
-  renderAll();
+  showProjectHome();
 })();

@@ -40,6 +40,35 @@
   .btn.primary:hover{background:var(--brand-dark);border-color:var(--brand-dark)}
   .btn.ghost{background:transparent}
   .saved-tip{font-size:12px;color:var(--muted);margin-left:4px}
+  .workspace-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;max-width:100%}
+  .active-project-name{font-size:13px;font-weight:600;color:var(--brand-dark);overflow-wrap:anywhere;max-width:280px}
+
+  /* ---------- 项目文件夹 ---------- */
+  .project-home{padding-top:8px}
+  .project-home-head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin:8px 0 24px}
+  .home-eyebrow{font-size:12px;color:var(--brand-dark);font-weight:600;margin-bottom:5px;letter-spacing:.4px}
+  .project-home h2{font-size:26px;font-weight:650;line-height:1.4}
+  .project-home-description{font-size:13px;color:var(--muted);margin-top:8px;max-width:620px}
+  .project-home-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;flex-shrink:0}
+  .project-home-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+  .project-search{display:block;flex:0 1 390px;min-width:0}
+  .project-search span{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .project-search input{width:100%;border:1px solid var(--line2);border-radius:9px;padding:9px 12px;background:#fff;color:var(--text);font:inherit;outline:none;appearance:none}
+  .project-search input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(14,159,110,.1)}
+  .project-home-tip{font-size:12px;color:var(--muted);padding-bottom:9px}
+  .project-storage-message{padding:11px 14px;border:1px solid var(--warn-line);background:var(--warn-soft);color:#80530e;border-radius:9px;font-size:13px;margin-bottom:18px;overflow-wrap:anywhere}
+  .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+  .project-grid > .empty{grid-column:1/-1;padding:62px 24px}
+  .project-folder{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;min-width:0;border:1px solid var(--line);border-radius:13px;padding:20px;background:#fff;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
+  .project-folder:hover{border-color:#b9d9cb;box-shadow:0 5px 18px rgba(16,24,40,.06)}
+  .folder-icon{display:flex;align-items:center;justify-content:center;flex:0 0 46px;width:46px;height:46px;border-radius:11px;background:#fdf3db;color:#a46e18;font-size:26px;line-height:1}
+  .folder-body{flex:1;min-width:0}
+  .project-name{font-size:16px;font-weight:600;line-height:1.5;color:var(--text);overflow-wrap:anywhere}
+  .project-summary{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.8;overflow-wrap:anywhere}
+  .project-dates{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.8;overflow-wrap:anywhere}
+  .folder-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:1 0 100%;padding-top:12px;border-top:1px solid var(--line);margin-top:1px}
+  .folder-actions .btn{font-size:12px;padding:6px 12px}
+  .project-modal{max-width:640px}
 
   /* ---------- 页面主体 ---------- */
   main{padding:22px 0 60px}
@@ -218,4 +247,18 @@
     .filters .count{width:100%;margin-left:0}
     .auto-grid,.map-row{grid-template-columns:1fr}
     .res-cards{grid-template-columns:repeat(2,1fr)}
+    .project-home-head{align-items:flex-start;flex-direction:column;gap:16px}
+    .project-home-actions{flex-shrink:1}
+    .project-home-toolbar{align-items:flex-start;flex-direction:column;gap:10px}
+    .project-search{flex:auto;width:100%;max-width:440px}
+    .project-home-tip{padding-bottom:0}
+    .workspace-heading{order:2;flex:1 0 100%}
+    .top-actions{order:3}
+    .active-project-name{max-width:calc(100vw - 175px)}
+  }
+  @media (max-width:620px){
+    .project-home h2{font-size:23px}
+    .project-home-actions{width:100%}
+    .project-grid{grid-template-columns:minmax(0,1fr)}
+    .project-folder{padding:17px}
   }

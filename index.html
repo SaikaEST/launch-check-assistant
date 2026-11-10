@@ -18,18 +18,46 @@
         <p>修船项目 · 船次、专业、流程与结算口径逐项核实</p>
       </div>
     </div>
-    <div class="top-actions">
+    <div class="workspace-heading" id="workspaceHeading" hidden>
+      <button class="btn ghost" data-act="projectHome">&#8592; 项目文件夹</button>
+      <span class="active-project-name" id="activeProjectName"></span>
+    </div>
+    <div class="top-actions" id="workspaceActions" hidden>
       <span class="saved-tip" id="savedTip"></span>
       <button class="btn primary" data-act="add">+ 新增检查项</button>
       <button class="btn" data-act="auto">明细自动核对</button>
       <button class="btn" data-act="report">导出报告</button>
-      <button class="btn" data-act="backup">备份</button>
-      <button class="btn" data-act="import">导入</button>
+      <button class="btn" data-act="backup">备份本项目</button>
+      <button class="btn" data-act="import">导入为新项目</button>
     </div>
   </div>
 </header>
 
 <main class="wrap">
+  <section class="project-home" id="projectHomeView" aria-labelledby="projectHomeTitle">
+    <div class="project-home-head">
+      <div>
+        <div class="home-eyebrow">上线项目管理</div>
+        <h2 id="projectHomeTitle">项目文件夹</h2>
+        <p class="project-home-description">新建项目从空白开始。打开应用时先选择项目，各项目记录独立保存。</p>
+      </div>
+      <div class="project-home-actions">
+        <button class="btn primary" data-act="newProject">+ 新建项目文件夹</button>
+        <button class="btn" data-act="importProject">导入为新项目</button>
+      </div>
+    </div>
+    <div class="project-home-toolbar">
+      <label class="project-search" for="projectSearch">
+        <span>查找项目</span>
+        <input type="search" id="projectSearch" aria-label="搜索项目" placeholder="搜索项目名称、工程编号或版本">
+      </label>
+      <span class="project-home-tip">选择文件夹后，继续该项目的上线检查。</span>
+    </div>
+    <div class="project-storage-message" id="projectStorageMessage" role="status" hidden></div>
+    <div class="project-grid" id="projectList" aria-live="polite"></div>
+  </section>
+
+  <div id="workspaceView" hidden>
   <section class="project-panel" aria-labelledby="projectTitle">
     <h2 id="projectTitle">本次上线范围</h2>
     <div class="grid3" id="projectContext">
@@ -71,11 +99,47 @@
   </div>
 
   <div id="list"></div>
+  </div>
 </main>
 
 <footer>
-  数据仅保存在本机浏览器（localStorage），不上传服务器；更换电脑或清理浏览器前请先导出备份。
+  项目分别保存在本机浏览器，不上传服务器。备份按项目导出；更换电脑或清理浏览器前，请先备份需要保留的项目。
 </footer>
+
+<div class="overlay" id="projectOverlay" hidden>
+  <div class="modal project-modal" role="dialog" aria-modal="true" aria-labelledby="projectDialogTitle">
+    <div class="modal-head">
+      <h2 id="projectDialogTitle">新建项目文件夹</h2>
+      <button class="icon-btn" data-act="closeProjectDialog" aria-label="关闭新建项目">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="newProjectName">项目名称 <em>*</em></label>
+        <input type="text" id="newProjectName" maxlength="100" autocomplete="off" placeholder="如：演示船次 A · 月度结算上线" required>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="newProjectCode">工程 / 船次编号（选填）</label><input type="text" id="newProjectCode" maxlength="100" autocomplete="off" placeholder="如：DEMO-SHIP-A"></div>
+        <div class="field"><label for="newProjectVersion">拟上线版本（选填）</label><input type="text" id="newProjectVersion" maxlength="100" autocomplete="off" placeholder="如：V1.0"></div>
+      </div>
+      <div class="field">
+        <label for="newProjectTemplate">初始检查清单</label>
+        <select id="newProjectTemplate">
+          <option value="blank" selected>空白项目（默认）</option>
+          <option value="company-settlement">公司结算</option>
+          <option value="workshop-monthly-settlement">车间分配与月度结算</option>
+          <option value="engineering-signoff">工程签单</option>
+          <option value="material-issue-procurement">物资领采</option>
+        </select>
+        <div class="hint">空白项目没有历史记录或示例数据。选择模板时，仅添加待核对项，之后也可在项目内追加模板。</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="err" id="projectFormErr" role="alert"></span>
+      <button class="btn" data-act="closeProjectDialog">取消</button>
+      <button class="btn primary" data-act="createProject">创建并打开</button>
+    </div>
+  </div>
+</div>
 
 <div class="overlay" id="overlay" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -132,6 +196,7 @@
 <script src="assets/shiprepair-templates.js"></script>
 <script src="assets/reconcile.js"></script>
 <script src="assets/readiness.js"></script>
+<script src="assets/projects.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>
