@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>项目上线前检查助手</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg>
+      </div>
+      <div>
+        <h1>项目上线前检查助手</h1>
+        <p>把口径、测试、数据核对和问题闭环逐项确认清楚，再谈上线</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="saved-tip" id="savedTip"></span>
+      <button class="btn primary" data-act="add">+ 新增检查项</button>
+      <button class="btn" data-act="auto">明细自动核对</button>
+      <button class="btn" data-act="report">导出报告</button>
+      <button class="btn" data-act="backup">备份</button>
+      <button class="btn" data-act="import">导入</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="banner" id="exampleBanner" hidden>
+    <span>当前包含 <b id="exampleCount">0</b> 条<b>示例数据</b>（带“示例”标记），仅用于演示，可直接编辑或一键清除。</span>
+    <button class="btn" data-act="clearExample">清除示例数据</button>
+  </div>
+
+  <section class="verdict" id="verdict" aria-live="polite"></section>
+  <section class="stats" id="stats"></section>
+
+  <div class="filters">
+    <select id="fCat" aria-label="按类别筛选"></select>
+    <select id="fOwner" aria-label="按负责人筛选"></select>
+    <select id="fStatus" aria-label="按状态筛选"></select>
+    <input type="text" id="fQ" placeholder="搜索检查项、备注、依据">
+    <label class="chk"><input type="checkbox" id="fOpen">只看未完成</label>
+    <button class="mini" id="fReset">重置筛选</button>
+    <span class="count" id="filterCount"></span>
+  </div>
+
+  <div id="list"></div>
+</main>
+
+<footer>
+  数据仅保存在本机浏览器（localStorage），不上传服务器；更换电脑或清理浏览器前请先导出备份。
+</footer>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h2 id="modalTitle">新增检查项</h2>
+      <button class="icon-btn" data-act="close" aria-label="关闭">&#10005;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <span class="err" id="formErr"></span>
+      <button class="btn" data-act="close">取消</button>
+      <button class="btn primary" data-act="save">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="autoOverlay" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="autoTitle">
+    <div class="modal-head">
+      <h2 id="autoTitle">明细自动核对</h2>
+      <button class="icon-btn" data-act="autoClose" aria-label="关闭">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" style="margin:0 0 12px">从源系统和本系统各导出明细，直接粘贴（Excel 复制为制表符分隔，推荐）。按“单据号”逐条比对，自动算出漏抓、多抓、重复、数量差异与正负合计。</div>
+      <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="autoHeader" checked> 第一行是表头</label>
+      <div class="map-row" id="autoMap">
+        <div class="field"><label>单据号列</label><select data-k="id"></select></div>
+        <div class="field"><label>数量 / 金额列</label><select data-k="qty"></select></div>
+        <div class="field"><label>项目（可选）</label><select data-k="project"></select></div>
+        <div class="field"><label>部门（可选）</label><select data-k="dept"></select></div>
+        <div class="field"><label>期间（可选）</label><select data-k="period"></select></div>
+      </div>
+      <div class="auto-grid">
+        <div class="field"><label>源系统明细（基准）</label><textarea id="autoSrc" placeholder="单据号&#9;数量&#9;项目&#9;部门&#9;期间&#10;PI20261001001&#9;12.5&#9;一号线&#9;生产部&#9;2026-10"></textarea></div>
+        <div class="field"><label>系统内明细（待核对）</label><textarea id="autoSys" placeholder="粘贴本系统采集后的明细…"></textarea></div>
+      </div>
+      <div class="auto-actions">
+        <button class="btn primary" data-act="autoRun">开始核对</button>
+        <span class="hint">只粘贴一份也可，仅做单份统计与重复检查。</span>
+      </div>
+      <div id="autoRes"></div>
+      <div class="field" style="margin-top:14px">
+        <label>写入目标</label>
+        <select id="autoTarget"></select>
+        <div class="hint">写入会覆盖目标项的明细条数、正负合计、零值行数和备注，不影响其他字段。</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="err" id="autoErr"></span>
+      <button class="btn" data-act="autoClose">关闭</button>
+      <button class="btn primary" data-act="autoWrite">写入检查项</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".json,application/json" hidden>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
