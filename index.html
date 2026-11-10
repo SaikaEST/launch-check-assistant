@@ -42,8 +42,15 @@
     <select id="fCat" aria-label="按类别筛选"></select>
     <select id="fOwner" aria-label="按负责人筛选"></select>
     <select id="fStatus" aria-label="按状态筛选"></select>
+    <select id="fSort" aria-label="排序方式">
+      <option value="default">默认顺序</option>
+      <option value="priority">按优先级</option>
+      <option value="due">按截止日期</option>
+      <option value="updated">最近更新</option>
+    </select>
     <input type="text" id="fQ" placeholder="搜索检查项、备注、依据">
     <label class="chk"><input type="checkbox" id="fOpen">只看未完成</label>
+    <label class="chk"><input type="checkbox" id="fDue">只看逾期</label>
     <button class="mini" id="fReset">重置筛选</button>
     <span class="count" id="filterCount"></span>
   </div>
@@ -109,7 +116,7 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-btn" id="toastUndo" hidden>撤销</button></div>
 <input type="file" id="fileInput" accept=".json,application/json" hidden>
 
 <script src="assets/app.js"></script>

@@ -22,7 +22,7 @@ const EXTRA_FIELDS = {
     {k: 'basis', l: '确认依据', t: 'textarea', ph: '口径确认单编号 / 会议纪要 / 签字文档链接'}
   ],
   test: [
-    {k: 'steps', l: '测试步骤', t: 'textarea', ph: '1. 造一条退货单（数量 -10）\\n2. 执行采集\\n3. 查看汇总结果'},
+    {k: 'steps', l: '测试步骤', t: 'textarea', ph: '1. 造一条退货单（数量 -10）\n2. 执行采集\n3. 查看汇总结果'},
     {k: 'expected', l: '预期结果', t: 'textarea', ph: '应记为 -10，汇总负数合计减少 10'},
     {k: 'actual', l: '实际结果', t: 'textarea', ph: '实际记为 0，负数合计未变化'}
   ],
@@ -79,15 +79,66 @@ function download(name, content, type) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1200);
 }
-function toast(msg) {
+function toast(msg, action) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
+  const btn = document.getElementById('toastUndo');
+  document.getElementById('toastMsg').textContent = msg;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.remove('show'), 1800);
+  if (action) {
+    btn.hidden = false;
+    btn.textContent = action.label || '撤销';
+    btn.onclick = () => {
+      hideToast();
+      action.fn();
+    };
+  } else {
+    btn.hidden = true;
+    btn.onclick = null;
+  }
+  el.classList.add('show');
+  toast._t = setTimeout(hideToast, action ? 6000 : 1800);
+}
+function hideToast() {
+  document.getElementById('toast').classList.remove('show');
+  const btn = document.getElementById('toastUndo');
+  btn.hidden = true;
+  btn.onclick = null;
+  clearTimeout(toast._t);
 }
 function num(v) {
   return v === '' || v == null || isNaN(Number(v)) ? null : Number(v);
+}
+function parseDue(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+function daysToDue(it) {
+  const d = parseDue(it.due);
+  if (!d) return null;
+  const t = new Date();
+  const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  return Math.round((d - today) / 86400000);
+}
+function dueInfo(it) {
+  if (!it.due || it.status === '通过' || it.status === '不适用') return null;
+  const n = daysToDue(it);
+  if (n === null) return null;
+  if (n < 0) return {overdue: true, text: '逾期 ' + (-n) + ' 天'};
+  if (n <= 3) return {overdue: false, text: n === 0 ? '今天到期' : n + ' 天后到期'};
+  return null;
+}
+function hl(s) {
+  const raw = String(s == null ? '' : s);
+  const q = state.filter.q.trim();
+  if (!q) return esc(raw);
+  const lower = raw.toLowerCase();
+  const ql = q.toLowerCase();
+  let out = '', i = 0, idx;
+  while ((idx = lower.indexOf(ql, i)) !== -1) {
+    out += esc(raw.slice(i, idx)) + '<mark class="mark">' + esc(raw.slice(idx, idx + q.length)) + '</mark>';
+    i = idx + q.length;
+  }
+  return out + esc(raw.slice(i));
 }
 
 /* ================= 数据模型 ================= */
@@ -198,7 +249,7 @@ function seedItems() {
 /* ================= 状态与存储 ================= */
 const state = {
   items: [],
-  filter: {cat: 'all', owner: 'all', status: 'all', q: '', onlyOpen: false}
+  filter: {cat: 'all', owner: 'all', status: 'all', sort: 'default', q: '', onlyOpen: false, onlyOverdue: false}
 };
 let editingId = null;
 
@@ -234,9 +285,10 @@ function stats() {
   const open = items.filter(i => i.status === '待处理' || i.status === '进行中' || i.status === '不通过').length;
   const severe = items.filter(i => i.category === 'issue' && i.severity === '严重' && i.status !== '通过' && i.status !== '不适用').length;
   const blockers = items.filter(isBlocking);
+  const overdue = items.filter(i => { const d = dueInfo(i); return d && d.overdue; }).length;
   const base = total - na;
   const rate = base > 0 ? Math.round(pass / base * 100) : 100;
-  return {total, pass, na, open, severe, blockers, rate};
+  return {total, pass, na, open, severe, blockers, rate, overdue};
 }
 
 /* ================= 文案生成 ================= */
@@ -318,7 +370,7 @@ function renderStats() {
     '<div class="stat">' +
       '<div class="label">未完成项</div>' +
       '<div class="num">' + s.open + '<small>项</small></div>' +
-      '<div class="cap">含待处理、进行中、不通过</div>' +
+      '<div class="cap' + (s.overdue ? ' overdue' : '') + '">' + (s.overdue ? '其中逾期 ' + s.overdue + ' 项，建议优先跟进' : '含待处理、进行中、不通过') + '</div>' +
     '</div>' +
     '<div class="stat' + (s.severe ? ' alert' : '') + '">' +
       '<div class="label">严重问题</div>' +
@@ -350,6 +402,11 @@ function renderFilters() {
     owners.map(o => '<option value="' + esc(o) + '">' + esc(o) + '</option>').join('');
   if (!owners.includes(state.filter.owner)) state.filter.owner = 'all';
   fOwner.value = state.filter.owner;
+
+  const fSort = document.getElementById('fSort');
+  if (fSort) fSort.value = state.filter.sort;
+  const fDue = document.getElementById('fDue');
+  if (fDue) fDue.checked = state.filter.onlyOverdue;
 }
 
 /* ================= 渲染：列表 ================= */
@@ -359,36 +416,64 @@ function statusOptions(cur) {
 
 function itemHtml(it) {
   const st = ST_CLASS[it.status] || 's-todo';
+  const due = dueInfo(it);
   const ev = it.evidence
     ? (/^https?:\/\//i.test(it.evidence)
         ? '<span>证据：<a href="' + esc(it.evidence) + '" target="_blank" rel="noopener">打开链接</a></span>'
-        : '<span>证据：' + esc(it.evidence) + '</span>')
+        : '<span>证据：' + hl(it.evidence) + '</span>')
     : '';
   return '<div class="item" data-id="' + it.id + '">' +
     '<div class="item-main" data-act="edit">' +
       '<div class="item-title-row">' +
-        '<span class="item-title' + (it.status === '通过' ? ' done' : '') + '">' + esc(it.title || '（未命名检查项）') + '</span>' +
+        '<span class="item-title' + (it.status === '通过' ? ' done' : '') + '">' + hl(it.title || '（未命名检查项）') + '</span>' +
         (it.critical ? '<span class="badge b-key">关键</span>' : '') +
         (it.priority ? '<span class="badge p-' + esc(it.priority) + '">' + esc(it.priority) + '优先级</span>' : '') +
+        (due ? '<span class="badge ' + (due.overdue ? 'b-overdue' : 'b-soon') + '">' + due.text + '</span>' : '') +
         (it.example ? '<span class="badge b-ex">示例</span>' : '') +
       '</div>' +
       '<div class="item-meta">' +
         '<span>负责人：' + esc(it.owner || '未指派') + '</span>' +
-        '<span>截止：' + (it.due ? esc(it.due) : '—') + '</span>' +
+        '<span class="due' + (due ? (due.overdue ? ' late' : ' soon') : '') + '">截止：' + (it.due ? esc(it.due) : '—') + '</span>' +
         ev +
       '</div>' +
-      (detailText(it) ? '<div class="item-detail">' + esc(detailText(it)) + '</div>' : '') +
-      (it.status === '不适用' && it.naReason ? '<div class="item-na">不适用理由：' + esc(it.naReason) + '</div>' : '') +
-      (it.note ? '<div class="item-note">备注：' + esc(it.note) + '</div>' : '') +
+      (detailText(it) ? '<div class="item-detail">' + hl(detailText(it)) + '</div>' : '') +
+      (it.status === '不适用' && it.naReason ? '<div class="item-na">不适用理由：' + hl(it.naReason) + '</div>' : '') +
+      (it.note ? '<div class="item-note">备注：' + hl(it.note) + '</div>' : '') +
     '</div>' +
     '<div class="item-side">' +
       '<select class="st ' + st + '" data-act="status">' + statusOptions(it.status) + '</select>' +
       '<div class="side-btns">' +
+        (it.status !== '通过' && it.status !== '不适用' ? '<button class="mini pass" data-act="quickPass" title="标记为通过">通过</button>' : '') +
         '<button class="mini" data-act="edit">编辑</button>' +
         '<button class="mini danger" data-act="del">删除</button>' +
       '</div>' +
     '</div>' +
   '</div>';
+}
+
+const P_ORDER = {'高': 0, '中': 1, '低': 2};
+function cmpDue(a, b) {
+  const x = daysToDue(a), y = daysToDue(b);
+  if (x === null && y === null) return 0;
+  if (x === null) return 1;
+  if (y === null) return -1;
+  return x - y;
+}
+function sortItems(list) {
+  const arr = list.slice();
+  const mode = state.filter.sort;
+  if (mode === 'priority') {
+    arr.sort((a, b) => {
+      const pa = P_ORDER[a.priority] == null ? 1 : P_ORDER[a.priority];
+      const pb = P_ORDER[b.priority] == null ? 1 : P_ORDER[b.priority];
+      return pa - pb || cmpDue(a, b);
+    });
+  } else if (mode === 'due') {
+    arr.sort(cmpDue);
+  } else if (mode === 'updated') {
+    arr.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+  return arr;
 }
 
 function filteredItems() {
@@ -399,6 +484,7 @@ function filteredItems() {
     if (f.owner !== 'all' && (it.owner || '未指派') !== f.owner) return false;
     if (f.status !== 'all' && it.status !== f.status) return false;
     if (f.onlyOpen && !(it.status === '待处理' || it.status === '进行中' || it.status === '不通过')) return false;
+    if (f.onlyOverdue) { const d = dueInfo(it); if (!d || !d.overdue) return false; }
     if (q) {
       const blob = [it.title, it.note, it.basis, it.owner, it.evidence, it.devOwner, detailText(it)].join(' ').toLowerCase();
       if (blob.indexOf(q) === -1) return false;
@@ -419,7 +505,7 @@ function renderList() {
   listEl.innerHTML = CATS.map(c => {
     if (state.filter.cat !== 'all' && state.filter.cat !== c.id) return '';
     const all = state.items.filter(i => i.category === c.id);
-    const rows = shown.filter(i => i.category === c.id);
+    const rows = sortItems(shown.filter(i => i.category === c.id));
     if (!rows.length) return '';
     const pass = all.filter(i => i.status === '通过').length;
     const rate = all.length ? Math.round(pass / all.length * 100) : 0;
@@ -1019,11 +1105,33 @@ function bindEvents() {
 
     if (act === 'add') { e.preventDefault(); openModal(null, el.dataset.cat); }
     else if (act === 'edit') { if (id) openModal(id); }
-    else if (act === 'del') {
+    else if (act === 'quickPass') {
       const it = state.items.find(i => i.id === id);
-      if (it && confirm('确定删除「' + it.title + '」？删除后不可恢复。')) {
-        state.items = state.items.filter(i => i.id !== id);
-        save(); renderAll(); toast('已删除');
+      if (!it) return;
+      const prev = {status: it.status, updatedAt: it.updatedAt};
+      it.status = '通过';
+      it.updatedAt = Date.now();
+      save(); renderAll();
+      toast('已标记通过：' + it.title, {
+        label: '撤销',
+        fn: () => { Object.assign(it, prev); save(); renderAll(); }
+      });
+    }
+    else if (act === 'del') {
+      const idx = state.items.findIndex(i => i.id === id);
+      if (idx < 0) return;
+      const it = state.items[idx];
+      if (confirm('确定删除「' + it.title + '」？删除后 6 秒内可撤销。')) {
+        state.items.splice(idx, 1);
+        save(); renderAll();
+        toast('已删除「' + it.title + '」', {
+          label: '撤销',
+          fn: () => {
+            state.items.splice(Math.min(idx, state.items.length), 0, it);
+            save(); renderAll();
+            toast('已恢复');
+          }
+        });
       }
     }
     else if (act === 'close') { closeModal(); }
@@ -1072,8 +1180,12 @@ function bindEvents() {
     if (fCat) { state.filter.cat = fCat.value; renderList(); return; }
     const fOwner = e.target.closest('#fOwner');
     if (fOwner) { state.filter.owner = fOwner.value; renderList(); return; }
+    const fSort = e.target.closest('#fSort');
+    if (fSort) { state.filter.sort = fSort.value; renderList(); return; }
     const fOpen = e.target.closest('#fOpen');
-    if (fOpen) { state.filter.onlyOpen = fOpen.checked; renderList(); }
+    if (fOpen) { state.filter.onlyOpen = fOpen.checked; renderList(); return; }
+    const fDue = e.target.closest('#fDue');
+    if (fDue) { state.filter.onlyOverdue = fDue.checked; renderList(); }
   });
 
   document.getElementById('fQ').addEventListener('input', e => {
@@ -1082,9 +1194,10 @@ function bindEvents() {
   });
 
   document.getElementById('fReset').addEventListener('click', () => {
-    state.filter = {cat: 'all', owner: 'all', status: 'all', q: '', onlyOpen: false};
+    state.filter = {cat: 'all', owner: 'all', status: 'all', sort: 'default', q: '', onlyOpen: false, onlyOverdue: false};
     document.getElementById('fQ').value = '';
     document.getElementById('fOpen').checked = false;
+    document.getElementById('fDue').checked = false;
     renderAll();
   });
 
