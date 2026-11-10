@@ -15,7 +15,7 @@
       </div>
       <div>
         <h1>项目上线前检查助手</h1>
-        <p>把口径、测试、数据核对和问题闭环逐项确认清楚，再谈上线</p>
+        <p>修船项目 · 船次、专业、流程与结算口径逐项核实</p>
       </div>
     </div>
     <div class="top-actions">
@@ -30,6 +30,21 @@
 </header>
 
 <main class="wrap">
+  <section class="project-panel" aria-labelledby="projectTitle">
+    <h2 id="projectTitle">本次上线范围</h2>
+    <div class="grid3" id="projectContext">
+      <div class="field"><label for="ctxProject">项目 / 工程编号</label><input id="ctxProject" data-context="project" type="text" placeholder="如：演示工程 DEMO-001"></div>
+      <div class="field"><label for="ctxVersion">拟上线版本</label><input id="ctxVersion" data-context="version" type="text" placeholder="填写待验收版本"></div>
+      <div class="field"><label for="ctxCutoff">取数截止时点</label><input id="ctxCutoff" data-context="cutoff" type="text" placeholder="如：2026-11-10 16:00，含时区"></div>
+    </div>
+    <div class="field"><label for="ctxScope">核查范围与口径</label><input id="ctxScope" data-context="scope" type="text" placeholder="船次、专业、施工队、期间、流程状态与排除范围"></div>
+    <div class="template-actions">
+      <label for="templateSelect">添加修船检查模板</label>
+      <select id="templateSelect" aria-label="修船检查模板"></select>
+      <button class="btn" data-act="addTemplate">添加待核对项</button>
+      <span class="hint">追加到现有台账；同一模板已存在的项不重复添加，全部从待处理开始。</span>
+    </div>
+  </section>
   <div class="banner" id="exampleBanner" hidden>
     <span>当前包含 <b id="exampleCount">0</b> 条<b>示例数据</b>（带“示例”标记），仅用于演示，可直接编辑或一键清除。</span>
     <button class="btn" data-act="clearExample">清除示例数据</button>
@@ -84,19 +99,14 @@
       <button class="icon-btn" data-act="autoClose" aria-label="关闭">&#10005;</button>
     </div>
     <div class="modal-body">
-      <div class="hint" style="margin:0 0 12px">从源系统和本系统各导出明细，直接粘贴（Excel 复制为制表符分隔，推荐）。按“单据号”逐条比对，自动算出漏抓、多抓、重复、数量差异与正负合计。</div>
+      <div class="hint" style="margin:0 0 12px">粘贴同一取数范围的两份明细（推荐 Excel 制表符，也支持带引号 CSV）。两边分别选列，按“单据号 + 已选维度”匹配，核对行数、正负分布、空值和数值差异。相同组合键多行需结合行号判断，不能直接认定为重复业务。</div>
       <label class="chk" style="margin-bottom:10px"><input type="checkbox" id="autoHeader" checked> 第一行是表头</label>
-      <div class="map-row" id="autoMap">
-        <div class="field"><label>单据号列</label><select data-k="id"></select></div>
-        <div class="field"><label>数量 / 金额列</label><select data-k="qty"></select></div>
-        <div class="field"><label>项目（可选）</label><select data-k="project"></select></div>
-        <div class="field"><label>部门（可选）</label><select data-k="dept"></select></div>
-        <div class="field"><label>期间（可选）</label><select data-k="period"></select></div>
-      </div>
       <div class="auto-grid">
-        <div class="field"><label>源系统明细（基准）</label><textarea id="autoSrc" placeholder="单据号&#9;数量&#9;项目&#9;部门&#9;期间&#10;PI20261001001&#9;12.5&#9;一号线&#9;生产部&#9;2026-10"></textarea></div>
+        <div class="field"><label for="autoSrc">源系统明细（基准）</label><textarea id="autoSrc" placeholder="单据号&#9;金额&#9;工程编号&#9;专业&#9;期间&#10;DEMO-001&#9;12.5&#9;DEMO-SHIP&#9;轮机&#9;2026-11"></textarea></div>
         <div class="field"><label>系统内明细（待核对）</label><textarea id="autoSys" placeholder="粘贴本系统采集后的明细…"></textarea></div>
       </div>
+      <div id="autoMap"></div>
+      <div class="field precision-field"><label for="autoPrecision">数值核对精度</label><select id="autoPrecision"><option value="2">2 位小数（金额常用）</option><option value="3">3 位小数</option><option value="4">4 位小数</option><option value="6">6 位小数</option></select><div class="hint">按所选小数位核对数值和合计；单位与换算关系须先由业务确认。</div></div>
       <div class="auto-actions">
         <button class="btn primary" data-act="autoRun">开始核对</button>
         <span class="hint">只粘贴一份也可，仅做单份统计与重复检查。</span>
@@ -105,7 +115,7 @@
       <div class="field" style="margin-top:14px">
         <label>写入目标</label>
         <select id="autoTarget"></select>
-        <div class="hint">写入会覆盖目标项的明细条数、正负合计、零值行数和备注，不影响其他字段。</div>
+        <div class="hint">写入将更新核对统计和备注，并把状态改为“进行中”；保留原备注。两份明细完整、口径一致仍需人工确认。</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -119,6 +129,9 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button class="toast-btn" id="toastUndo" hidden>撤销</button></div>
 <input type="file" id="fileInput" accept=".json,application/json" hidden>
 
+<script src="assets/shiprepair-templates.js"></script>
+<script src="assets/reconcile.js"></script>
+<script src="assets/readiness.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>
